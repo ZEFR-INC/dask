@@ -541,3 +541,49 @@ def test_apply_gufunc_via_numba_02():
     y = mysum(a, axis=0, keepdims=True, allow_rechunk=True)
 
     assert_eq(x, y)
+
+
+def run_mangled_output_dtype_test(reassign_vectorize_dtypes=None):
+    def identity(x):
+        return x
+
+    o_dtype = np.dtype('U2')
+
+    if reassign_vectorize_dtypes is None:
+        f = da.gufunc(identity,
+                      output_dtypes=(o_dtype,),
+                      signature="()->()",
+                      vectorize=True)
+    else:
+        f = da.gufunc(identity,
+                      output_dtypes=(o_dtype,),
+                      signature="()->()",
+                      vectorize=True,
+                      reassign_vectorize_dtypes=reassign_vectorize_dtypes)
+
+    x = np.array([['11', '12'], ['21', '22']], dtype=o_dtype)
+    y = f(da.array(x)).compute()
+
+    np.testing.assert_array_equal(y, x)
+
+    # Check consistent with numpy.  This is not the same as testing the
+    # correctness of numpy.
+    g = np.vectorize(identity, otypes=(o_dtype,), signature="()->()")
+    if reassign_vectorize_dtypes is not True:
+        np.testing.assert_array_equal(g(x), y)
+    else:
+        assert not np.array_equal(g(x), y)
+
+
+def test_unicode_dtypes_in_gufunc_with_fix_true():
+    run_mangled_output_dtype_test(reassign_vectorize_dtypes=True)
+
+
+def test_unicode_dtypes_in_gufunc_with_fix_omitted():
+    with pytest.raises(AssertionError):
+        run_mangled_output_dtype_test()
+
+
+def test_unicode_dtypes_in_gufunc_with_fix_false():
+    with pytest.raises(AssertionError):
+        run_mangled_output_dtype_test(reassign_vectorize_dtypes=False)
